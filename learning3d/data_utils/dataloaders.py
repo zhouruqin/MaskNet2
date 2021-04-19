@@ -37,7 +37,7 @@ def load_data(train, use_normals):
 	all_data = []
 	all_label = []
 	for h5_name in glob.glob(os.path.join(DATA_DIR, 'modelnet40_ply_hdf5_2048', 'ply_data_%s*.h5' % partition)):
-		f = h5py.File(h5_name)
+		f = h5py.File(h5_name, 'r')
 		if use_normals: data = np.concatenate([f['data'][:], f['normal'][:]], axis=-1).astype('float32')
 		else: data = f['data'][:].astype('float32')
 		label = f['label'][:].astype('int64')
@@ -49,11 +49,11 @@ def load_data(train, use_normals):
 	return all_data, all_label
 
 def jitter_pointcloud(pointcloud, sigma=0.01, clip=0.05):
-    # N, C = pointcloud.shape
-    sigma = 0.04*np.random.random_sample()
-    pointcloud += torch.empty(pointcloud.shape).normal_(mean=0, std=sigma).clamp(-clip, clip)
-    # pointcloud += np.clip(sigma * np.random.randn(N, C), -1 * clip, clip)
-    return pointcloud
+	# N, C = pointcloud.shape
+	#sigma = 0.04*np.random.random_sample()
+	pointcloud += torch.empty(pointcloud.shape).normal_(mean=0, std=sigma).clamp(-clip, clip)
+	# pointcloud += np.clip(sigma * np.random.randn(N, C), -1 * clip, clip)
+	return pointcloud
 
 # Create Partial Point Cloud. [Code referred from PRNet paper.]
 def farthest_subsample_points(pointcloud1, num_subsampled_points=768):
@@ -61,18 +61,43 @@ def farthest_subsample_points(pointcloud1, num_subsampled_points=768):
 	num_points = pointcloud1.shape[0]
 	nbrs1 = NearestNeighbors(n_neighbors=num_subsampled_points, algorithm='auto',
 							 metric=lambda x, y: minkowski(x, y)).fit(pointcloud1[:, :3])
+	#nbrs2 = NearestNeighbors(n_neighbors=1024, algorithm='auto',
+	#						 metric=lambda x, y: minkowski(x, y)).fit(pointcloud1[:, :3])
 	random_p1 = np.random.random(size=(1, 3)) + np.array([[500, 500, 500]]) * np.random.choice([1, -1, 1, -1])
 	idx1 = nbrs1.kneighbors(random_p1, return_distance=False).reshape((num_subsampled_points,))
-	gt_mask = torch.zeros(num_points).scatter_(0, torch.tensor(idx1), 1)
-	return pointcloud1[idx1, :], gt_mask
+	#idx2 = nbrs2.kneighbors(random_p1, return_distance=False).reshape((1024,))
 
-def add_outliers(pointcloud, gt_mask):
+	#intersect_mask, intersect_x, intersect_y  = np.intersect1d(idx1, idx2, return_indices=True)
+	#print(intersect_mask)
+	#print( idx1[intersect_x])
+	#print(intersect_y) 
+
+	#print(idx2)
+
+
+	#print(intersect_mask)
+	#print(idx2)
+	#print(intersect_x)
+	#print(intersect_y)
+	#gt_mask_source = torch.zeros(pointcloud1.shape[0])	#tuple(p_source.shape[0])  
+	#gt_mask_source [intersect_y]  = 1
+
+	#gt_mask = torch.zeros(num_points).scatter_(0, torch.tensor(idx1), 1)
+	#print('gt_mask_source')
+	#print(gt_mask_source)
+	#print('gt_mask')
+	#print(gt_mask)
+
+
+	return pointcloud1[idx1, :], idx1
+
+def add_outliers(pointcloud, gt_mask, count =100):
 	# pointcloud: 			Point Cloud (ndarray) [NxC]
 	# output: 				Corrupted Point Cloud (ndarray) [(N+300)xC]
 	N, C = pointcloud.shape
-	outliers = 2*torch.rand(100, C)-1 					# Sample points in a cube [-0.5, 0.5]
+	outliers = 2*torch.rand(count, C)-1 					# Sample points in a cube [-0.5, 0.5]
 	pointcloud = torch.cat([pointcloud, outliers], dim=0)
-	gt_mask = torch.cat([gt_mask, torch.zeros(100)])
+	gt_mask = torch.cat([gt_mask, torch.zeros(count)])
 
 	idx = torch.randperm(pointcloud.shape[0])
 	pointcloud, gt_mask = pointcloud[idx], gt_mask[idx]
@@ -166,17 +191,88 @@ class ClassificationData(Dataset):
 		return self.data_class[index]
 
 
-class RegistrationData(Dataset):
-	def __init__(self, data_class=ModelNet40Data(), partial_source=False, noise=False, outliers=False):
+def uniform_2_sphere(num: int = None):
+	"""Uniform sampling on a 2-sphere
+
+	Source: https://gist.github.com/andrewbolster/10274979
+
+	Args:
+		num: Number of vectors to sample (or None if single)
+
+	Returns:
+		Random Vector (np.ndarray) of size (num, 3) with norm 1.
+		If num is None returned value will have size (3,)
+
+	"""
+	if num is not None:
+		phi = np.random.uniform(0.0, 2 * np.pi, num)
+		cos_theta = np.random.uniform(-1.0, 1.0, num)
+	else:
+		phi = np.random.uniform(0.0, 2 * np.pi)
+		cos_theta = np.random.uniform(-1.0, 1.0)
+
+	theta = np.arccos(cos_theta)
+	x = np.sin(theta) * np.cos(phi)
+	y = np.sin(theta) * np.sin(phi)
+	z = np.cos(theta)
+	
+	#xyz =  torch.from_numpy( np.stack((x, y, z), axis=-1))
+	return np.stack((x, y, z), axis=-1)
+
+
+
+def PointcloudCrop(points, p_keep= 0.7):
+	p_keep = np.array(p_keep, dtype=np.float32)
+
+	rand_xyz = uniform_2_sphere()
+	pts = points.numpy()
+	centroid = np.mean(pts[:, :3], axis=0)
+	points_centered = pts[:, :3] - centroid
+
+	dist_from_plane = np.dot(points_centered, rand_xyz)
+	#if p_keep ==  0.5:
+	#	mask = dist_from_plane > 0
+	#else:
+	mask = dist_from_plane > np.percentile(dist_from_plane, (1.0 -p_keep) * 100)
+
+	#mask_y = dist_from_plane >= np.percentile(dist_from_plane, (1.0 -p_keep) * 100)
+
+	idx_x = torch.Tensor(np.nonzero(mask))
+	#idx_y = torch.Tensor(np.nonzero(mask_y))
+
+	#intersect_mask, intersect_x, intersect_y  = np.intersect1d(idx_x, idx_y, return_indices=True)
+	#print(intersect_mask)
+	#print(intersect_x)
+	#print(intersect_y)
+	#gt_mask_source = torch.zeros(points.shape[0])	#tuple(p_source.shape[0])  
+	#gt_mask_source [intersect_y]  = 1
+
+	return torch.Tensor(pts[mask, :3]), idx_x#gt_mask_source
+
+
+def OnUnitCube(tensor):
+		xyz_min = torch.max(tensor, dim=0)[0]
+		xyz_max = torch.min(tensor, dim=0)[0]
+		xyz_move = xyz_min+(xyz_max-xyz_min)/2
+		tensor[:,0:3] = tensor[:,0:3]-xyz_move
+		#scale
+		scale = torch.max(tensor[:,0:3])
+		tensor[:,0:3] = tensor[:,0:3]/scale
+		return tensor
+
+class RegistrationData(Dataset):#
+	def __init__(self, data_class=ModelNet40Data(), partial= 1, noise= 0, outliers=0):
 		super(RegistrationData, self).__init__()
+		#print(partial)
 		
 		self.set_class(data_class)
-		self.partial_source = partial_source
+		self.partial = partial
 		self.noise = noise
 		self.outliers = outliers
 
-		from .. ops.transform_functions import PNLKTransform
-		self.transforms = PNLKTransform(0.8, True)
+		from .. ops.transform_functions import PNLKTransform,PCRNetTransform
+		self.transforms = PNLKTransform(0.5, True)#PCRNetTransform( self.__len__(),45, 0.5)
+		
 
 	def __len__(self):
 		return len(self.data_class)
@@ -186,14 +282,36 @@ class RegistrationData(Dataset):
 
 	def __getitem__(self, index):
 		template, label = self.data_class[index]
-		gt_mask = torch.ones(template.shape[0])			# by default all ones.
+		source = template.detach()
 
-		source = self.transforms(template)
-		if self.partial_source: source, gt_mask = farthest_subsample_points(source)
-		if self.noise: source = jitter_pointcloud(source)						# Add noise in source point cloud.
-		if self.outliers: template, gt_mask = add_outliers(template, gt_mask)
-		igt = self.transforms.igt
-		return template, source, igt, gt_mask
+		gt_mask_y = torch.ones(template.shape[0])
+		gt_mask_x = torch.ones(source.shape[0])
+		
+		if self.partial: 
+			source, gt_idx_source = PointcloudCrop(source)
+			template, gt_idx_template = PointcloudCrop(template)
+			intersect_mask, intersect_x, intersect_y  = np.intersect1d(gt_idx_source, gt_idx_template, return_indices=True)
+			gt_mask_y = torch.zeros(template.shape[0])
+			gt_mask_x = torch.zeros(source.shape[0])
+			gt_mask_y[intersect_y]  = 1
+			gt_mask_x[intersect_x]  = 1
+
+		
+		if self.noise: 
+			source = jitter_pointcloud(source)	
+			template = jitter_pointcloud(template)				# Add noise in source point cloud.
+
+
+		if self.outliers: 
+			template, gt_mask_y = add_outliers(template, gt_mask_y)
+			source, gt_mask_x = add_outliers(source, gt_mask_x)
+
+		#source = self.transforms(source)
+		#igt = self.transforms.gt
+		source = self.transforms(source)#, index
+		igt = self.transforms.gt
+		#p_points = igt.apply_transform(points)
+		return  template, source, igt, gt_mask_y ,gt_mask_x
 
 
 class SegmentationData(Dataset):
@@ -301,29 +419,51 @@ class SceneflowDataset(Dataset):
 		return len(self.datapath)
 
 class AnyData:
-	def __init__(self, pc, mask=False, repeat=1000):
+	def __init__(self, pc, mask=False, repeat = 100,  partial= 1, noise= 0, outliers=0):
 		# pc:			Give any point cloud [N, 3] (ndarray)
 		# mask:			False means full source and True mean partial source.
 
-		self.template = torch.tensor(pc, dtype=torch.float32).unsqueeze(0)
+		self.template = torch.tensor(pc, dtype=torch.float32)
 		self.template = self.template.repeat(repeat, 1, 1)
 		from .. ops.transform_functions import PNLKTransform
 		self.transforms = PNLKTransform(mag=0.5, mag_randomly=True)
 		self.mask = mask
+		self.partial = partial
+		self.noise = noise
+		self.outliers = outliers
 
 	def __len__(self):
 		return self.template.shape[0]
 
 	def __getitem__(self, index):
 		template = self.template[index]
-		source = self.transforms(template)
-		if self.mask:
-			source, gt_mask = farthest_subsample_points(source, num_subsampled_points=int(template.shape[0]*0.7))
-		igt = self.transforms.igt
-		if self.mask:
-			return template, source, igt, gt_mask
-		else:
-			return template, source, igt
+		source = template.detach()
+
+		gt_mask_y = torch.ones(template.shape[0])
+		gt_mask_x = torch.ones(source.shape[0])
+	
+		if self.partial: 
+			source, gt_idx_source = PointcloudCrop(source)
+			template, gt_idx_template = PointcloudCrop(template)
+			intersect_mask, intersect_x, intersect_y  = np.intersect1d(gt_idx_source, gt_idx_template, return_indices=True)
+			gt_mask_y = torch.zeros(template.shape[0])
+			gt_mask_x = torch.zeros(source.shape[0])
+			gt_mask_y[intersect_y]  = 1
+			gt_mask_x[intersect_x]  = 1
+
+		
+		if self.noise: 
+			source = jitter_pointcloud(source)	
+			template = jitter_pointcloud(template)				# Add noise in source point cloud.
+
+
+		if self.outliers: 
+			template, gt_mask_y = add_outliers(template, gt_mask_y)
+			source, gt_mask_x = add_outliers(source, gt_mask_x)
+
+		source = self.transforms(source)
+		igt = self.transforms.gt
+		return  template,source, igt, gt_mask_y ,gt_mask_x
 
 class UserData:
 	def __init__(self, template, source, mask=None, igt=None):

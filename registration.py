@@ -1,4 +1,4 @@
-import open3d as o3d
+#import open3d as o3d
 import os
 import sys
 import logging
@@ -12,7 +12,8 @@ import time
 	
 from learning3d.models import PointNet, iPCRNet, RPMNet, PointNetLK
 from learning3d.models import DGCNN, DCP, PRNet
-
+from learning3d.models.scanet import SCANet
+'''
 # ICP registration module.
 class ICP:
 	def __init__(self, threshold=0.1, max_iteration=10):
@@ -80,7 +81,7 @@ class ICP:
 				  'est_T': est_T}
 		if self.is_tensor: result = self.convert2tensor(result)
 		return result
-
+'''
 # Specify Paths for Pretrained Models of Registration Networks.
 def find_pretrained_path(reg_algorithm):
 	BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -95,6 +96,8 @@ def find_pretrained_path(reg_algorithm):
 		pretrained_reg = 'pretrained/exp_ipcrnet/models/best_model.t7'
 	elif reg_algorithm == 'rpmnet':
 		pretrained_reg = 'pretrained/exp_rpmnet/models/partial-trained.pth'
+	elif reg_algorithm == 'icp':
+		return 
 	return os.path.join(BASE_DIR, pretrained_reg)
 
 

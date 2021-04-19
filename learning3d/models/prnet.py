@@ -262,8 +262,9 @@ class KeyPointNet(nn.Module):
         batch_size, num_dims, num_points = src_embedding.size()
         src_norm = torch.norm(src_embedding, dim=1, keepdim=True)
         tgt_norm = torch.norm(tgt_embedding, dim=1, keepdim=True)
-        src_topk_idx = torch.topk(src_norm, k=self.num_keypoints, dim=2, sorted=False)[1]
-        tgt_topk_idx = torch.topk(tgt_norm, k=self.num_keypoints, dim=2, sorted=False)[1]
+    
+        src_topk_idx = torch.topk(src_norm, k= int(src_norm.size()[2]*0.5), dim=2, sorted=False)[1]#self.num_keypoints
+        tgt_topk_idx = torch.topk(tgt_norm, k= int(src_norm.size()[2]*0.5), dim=2, sorted=False)[1]#self.num_keypoints
         src_keypoints_idx = src_topk_idx.repeat(1, 3, 1)
         tgt_keypoints_idx = tgt_topk_idx.repeat(1, 3, 1)
         src_embedding_idx = src_topk_idx.repeat(1, num_dims, 1)

@@ -71,8 +71,11 @@ Learning3D is our open-source library that supports the development of deep lear
 > pip install -r requirements.txt\
 > python train.py
 
+ python train.py --eval 1  --pretrained ./pretrained/exp_masknet/best_model_0.7.t7  --partial 0 --noise 0 --outliers 1
+
+
 ### Test MaskNet:
-> python test.py --pretrained checkpoints/exp_masknet/models/best_model.t7 --reg_algorithm 'pointnetlk'
+> CUDA_VISIBLE_DEVICES=0 python test.py --pretrained ./pretrained/exp_masknet/best_model_0.7.t7   --reg_algorithm 'pointnetlk'
 
 We provide a number of registration algorithms with MaskNet as listed below:
 1. PointNetLK

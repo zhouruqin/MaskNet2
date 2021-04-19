@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from .pooling import Pooling
 
 
+
 class PointNet(torch.nn.Module):
 	def __init__(self, emb_dims=1024, input_shape="bnc", use_bn=False, global_feat=True):
 		# emb_dims:			Embedding Dimensions for PointNet.
@@ -33,13 +34,13 @@ class PointNet(torch.nn.Module):
 			self.bn3 = torch.nn.BatchNorm1d(64)
 			self.bn4 = torch.nn.BatchNorm1d(128)
 			self.bn5 = torch.nn.BatchNorm1d(self.emb_dims)
-
+		
 		if self.use_bn:
 			layers = [self.conv1, self.bn1, self.relu,
 					  self.conv2, self.bn2, self.relu,
 					  self.conv3, self.bn3, self.relu,
 					  self.conv4, self.bn4, self.relu,
-					  self.conv5, self.bn5, self.relu]
+					  self.conv5,self.bn5, self.relu]
 		else:
 			layers = [self.conv1, self.relu,
 					  self.conv2, self.relu, 
@@ -47,6 +48,7 @@ class PointNet(torch.nn.Module):
 					  self.conv4, self.relu,
 					  self.conv5, self.relu]
 		return layers
+		
 
 
 	def forward(self, input_data):
@@ -63,8 +65,10 @@ class PointNet(torch.nn.Module):
 		output = input_data
 		for idx, layer in enumerate(self.layers):
 			output = layer(output)
-			if idx == 2: self.feature_for_mask = output 							# Modifications for Partial Data
-			if idx == 1 and not self.global_feat: point_feature = output
+
+
+		if idx == 2: self.feature_for_mask = output 							# Modifications for Partial Data
+		if idx == 1 and not self.global_feat: point_feature = output
 
 		if self.global_feat:
 			return output
