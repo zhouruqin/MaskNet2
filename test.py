@@ -254,7 +254,7 @@ def test_one_epoch(args, model, test_loader):
 		mask_1_binary = torch.where(predicted_mask_1 > 0.5, torch.ones(predicted_mask_1.size()).cuda(), torch.zeros(predicted_mask_1.size()).cuda())
 
 		predict_num_0 += mask_0_binary.sum(1)
-		target_num_0 += gt_mask_1.sum(1)
+		target_num_0 += gt_mask_0.sum(1)
 		acc_mask_0 = mask_0_binary*gt_mask_0
 		acc_num_0 += acc_mask_0.sum(1)
 
